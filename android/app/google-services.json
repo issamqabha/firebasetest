@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "723337166396",
+    "project_id": "flutter-issam2",
+    "storage_bucket": "flutter-issam2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:723337166396:android:3748c93d1c8fafa3ae0d39",
+        "android_client_info": {
+          "package_name": "com.example.firebasetest"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA7LwAJrumP0LpfyOK7Q4Q_CF2zSlrTJxU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

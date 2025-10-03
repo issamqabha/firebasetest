@@ -334,7 +334,7 @@ class _ProfileInfoState extends State<ProfileInfo> {
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 13,
                   color: Colors.grey.shade600,
                   fontWeight: FontWeight.w500,
                 ),

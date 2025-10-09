@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
-import '../auth/sign_in_page.dart';   // صار في مجلد auth
-import '../profile/profile_info.dart'; // صار في مجلد profile
-import '../../services/auth_service.dart';  // صار في مجلد services
-
+import 'package:flutter/material.dart';
+import '../customers/add_customer_page.dart';
+import '../customers/customer_details_page.dart';
+import '../profile/profile_info.dart';
+import '../auth/auth_gate.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -14,8 +14,9 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final _authService = AuthService();
-  Map<String, dynamic>? _userData;
+  final _firestore = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
+  Map<String, dynamic>? _driverData;
 
   @override
   void initState() {
@@ -24,41 +25,51 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadUserData() async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-    final data = await _authService.getUserData(uid);
-    setState(() => _userData = data);
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final doc = await _firestore.collection('users').doc(user.uid).get();
+    if (doc.exists) setState(() => _driverData = doc.data());
   }
 
   Future<void> _signOut() async {
-    await _authService.signOut();
-    if (mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const SignInPage()),
-            (_) => false,
-      );
-    }
+    await _auth.signOut();
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const AuthGate()),
+          (_) => false,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_userData == null) {
+    final user = _auth.currentUser;
+    if (user == null) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: Center(child: Text('جاري تحميل المستخدم...')),
       );
     }
 
+    final uid = user.uid;
+
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('دفتر ديون التاكسي'),
+        backgroundColor: Colors.teal,
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadUserData,
+          ),
+        ],
+      ),
       drawer: Drawer(
         child: ListView(
+          padding: EdgeInsets.zero,
           children: [
             UserAccountsDrawerHeader(
-              accountName: Text(_userData!["name"] ?? "No Name"),
-              accountEmail: Text(_userData!["email"] ?? "No Email"),
-              currentAccountPicture: const CircleAvatar(
-                backgroundColor: Colors.white,
-                child: Icon(Icons.person, size: 40, color: Colors.teal),
-              ),
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   colors: [Colors.teal, Colors.blueAccent],
@@ -66,16 +77,25 @@ class _HomePageState extends State<HomePage> {
                   end: Alignment.bottomRight,
                 ),
               ),
+              accountName: Text(
+                _driverData?['name'] ?? 'السائق',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              accountEmail: Text(
+                _driverData?['email'] ?? user.email ?? '',
+              ),
+              currentAccountPicture: const CircleAvatar(
+                backgroundColor: Colors.white,
+                child: Icon(Icons.person, size: 40, color: Colors.teal),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.person),
               title: const Text("الملف الشخصي"),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ProfileInfo()),
-                );
-              },
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ProfileInfo()),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
@@ -85,142 +105,91 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
       ),
-      appBar: AppBar(
-        backgroundColor: Colors.teal,
-        title: const Text("الصفحة الرئيسية"),
-        centerTitle: true,
-      ),
       backgroundColor: Colors.grey[100],
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // ====== الهيدر ======
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 30),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.teal, Colors.blueAccent],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
-                ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: _firestore
+            .collection('users')
+            .doc(uid)
+            .collection('customers')
+            .orderBy('createdAt', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(
+              child: Text(
+                'لا يوجد زبائن بعد.\nأضف أول زبون من الزر بالأسفل 👇',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, color: Colors.black54),
               ),
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 50,
-                    backgroundColor: Colors.white,
-                    child: Icon(Icons.person, size: 60, color: Colors.teal[700]),
+            );
+          }
+
+          final customers = snapshot.data!.docs;
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: customers.length,
+            itemBuilder: (context, index) {
+              final data = customers[index].data() as Map<String, dynamic>;
+              final id = customers[index].id;
+
+              return Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                elevation: 3,
+                child: ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Colors.teal,
+                    child: Icon(Icons.person, color: Colors.white),
                   ),
-                  const SizedBox(height: 15),
-                  Text(
-                    _userData!['name'] ?? "No Name",
+                  title: Text(
+                    data['name'] ?? 'بدون اسم',
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
                       fontWeight: FontWeight.bold,
+                      fontSize: 18,
                     ),
                   ),
-                  const SizedBox(height: 5),
-                  Text(
-                    _userData!['major'] ?? "",
+                  subtitle: Text('الهاتف: ${data['phone'] ?? 'غير محدد'}'),
+                  trailing: Text(
+                    '${data['totalDebt'] ?? 0} د.أ',
                     style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red,
                     ),
                   ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // ====== الكروت ======
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                children: [
-                  _buildInfoCard(
-                    icon: Icons.email_outlined,
-                    label: "البريد الإلكتروني",
-                    value: _userData!['email'],
-                  ),
-                  const SizedBox(height: 15),
-                  _buildInfoCard(
-                    icon: Icons.cake_outlined,
-                    label: "العمر",
-                    value: "${_userData!['age']} سنة",
-                  ),
-                  const SizedBox(height: 15),
-                  _buildInfoCard(
-                    icon: Icons.wc_outlined,
-                    label: "الجنس",
-                    value: _userData!['gender'],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 30),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ====== ويدجت الكارت ======
-  Widget _buildInfoCard({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.15),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: Colors.teal.withOpacity(0.1),
-            child: Icon(icon, color: Colors.teal, size: 22),
-          ),
-          const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    )),
-                const SizedBox(height: 5),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                  ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CustomerDetailsPage(
+                          customerId: id,
+                          name: data['name'] ?? 'زبون',
+                        ),
+                      ),
+                    );
+                  },
                 ),
-              ],
-            ),
-          ),
-        ],
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AddCustomerPage()),
+          );
+        },
+        label: const Text('إضافة زبون'),
+        icon: const Icon(Icons.add),
+        backgroundColor: Colors.teal,
       ),
     );
   }

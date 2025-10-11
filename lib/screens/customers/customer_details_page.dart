@@ -72,80 +72,44 @@ class _CustomerDetailsPageState extends State<CustomerDetailsPage> {
     );
   }
 
-  Future<void> _addOldDebt() async {
-    final amountController = TextEditingController();
-    final descController = TextEditingController();
+  Future<void> _deleteCustomer() async {
+    final uid = _auth.currentUser!.uid;
+    final customerRef = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('customers')
+        .doc(widget.customerId);
 
-    await showDialog(
+    final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('إضافة دين قديم 💰'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: amountController,
-              decoration: const InputDecoration(labelText: 'المبلغ (د.أ)'),
-              keyboardType: TextInputType.number,
-            ),
-            TextField(
-              controller: descController,
-              decoration: const InputDecoration(labelText: 'وصف الدين'),
-            ),
-          ],
-        ),
+      builder: (_) => AlertDialog(
+        title: const Text('تأكيد الحذف'),
+        content: const Text('هل تريد حذف الزبون وجميع الرحلات الخاصة به؟'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('إلغاء'),
           ),
           ElevatedButton(
-            onPressed: () async {
-              final uid = _auth.currentUser!.uid;
-              final amount = double.tryParse(amountController.text) ?? 0.0;
-              if (amount <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('⚠️ أدخل مبلغ صالح')),
-                );
-                return;
-              }
-
-              await _firestore
-                  .collection('users')
-                  .doc(uid)
-                  .collection('customers')
-                  .doc(widget.customerId)
-                  .collection('trips')
-                  .add({
-                'description': descController.text.isEmpty
-                    ? 'دين قديم'
-                    : descController.text.trim(),
-                'amount': amount,
-                'isPaid': false,
-                'date': DateTime.now(),
-              });
-
-              final customerRef = _firestore
-                  .collection('users')
-                  .doc(uid)
-                  .collection('customers')
-                  .doc(widget.customerId);
-
-              await _firestore.runTransaction((tx) async {
-                final snap = await tx.get(customerRef);
-                final total = (snap['totalDebt'] ?? 0.0) + amount;
-                tx.update(customerRef, {'totalDebt': total});
-              });
-
-              if (mounted) Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('✅ تمت إضافة الدين')),
-              );
-            },
-            child: const Text('إضافة'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف'),
           ),
         ],
       ),
+    );
+
+    if (confirm != true) return;
+
+    final tripsSnap = await customerRef.collection('trips').get();
+    for (var doc in tripsSnap.docs) {
+      await doc.reference.delete();
+    }
+    await customerRef.delete();
+
+    if (mounted) Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('🗑️ تم حذف الزبون بالكامل')),
     );
   }
 
@@ -182,7 +146,6 @@ class _CustomerDetailsPageState extends State<CustomerDetailsPage> {
 
     await tripRef.delete();
 
-    // تحديث المجموع فقط إذا لم تكن الرحلة مدفوعة
     if (!isPaid) {
       final customerRef = _firestore
           .collection('users')
@@ -202,44 +165,32 @@ class _CustomerDetailsPageState extends State<CustomerDetailsPage> {
     );
   }
 
-  Future<void> _deleteCustomer() async {
+  Future<void> _markAsPaid(String tripId, double amount) async {
     final uid = _auth.currentUser!.uid;
+    final tripRef = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('customers')
+        .doc(widget.customerId)
+        .collection('trips')
+        .doc(tripId);
+
+    await tripRef.update({'isPaid': true});
+
     final customerRef = _firestore
         .collection('users')
         .doc(uid)
         .collection('customers')
         .doc(widget.customerId);
 
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('تأكيد حذف الزبون'),
-        content: const Text('هل تريد حذف الزبون وجميع الرحلات الخاصة به؟'),
-        actions: [
-          TextButton(
-            child: const Text('إلغاء'),
-            onPressed: () => Navigator.pop(context, false),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('حذف'),
-          ),
-        ],
-      ),
-    );
+    await _firestore.runTransaction((tx) async {
+      final snap = await tx.get(customerRef);
+      final total = (snap['totalDebt'] ?? 0.0) - amount;
+      tx.update(customerRef, {'totalDebt': total < 0 ? 0.0 : total});
+    });
 
-    if (confirm != true) return;
-
-    final tripsSnap = await customerRef.collection('trips').get();
-    for (var doc in tripsSnap.docs) {
-      await doc.reference.delete();
-    }
-    await customerRef.delete();
-
-    if (mounted) Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('🗑️ تم حذف الزبون بالكامل')),
+      const SnackBar(content: Text('✅ تم تحديد الرحلة كمدفوعة')),
     );
   }
 
@@ -255,8 +206,31 @@ class _CustomerDetailsPageState extends State<CustomerDetailsPage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.teal,
-        title: Text('الزبون: ${widget.name}'),
+        title: StreamBuilder<DocumentSnapshot>(
+          stream: customerRef.snapshots(),
+          builder: (context, snapshot) {
+            final name = snapshot.data?.get('name') ?? widget.name;
+            return Text('الزبون: $name');
+          },
+        ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            tooltip: 'تعديل الزبون',
+            onPressed: () async {
+              final doc = await customerRef.get();
+              if (doc.exists) {
+                _editCustomer(doc.data() as Map<String, dynamic>);
+              }
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete, color: Colors.red),
+            tooltip: 'حذف الزبون',
+            onPressed: _deleteCustomer,
+          ),
+        ],
       ),
       backgroundColor: Colors.grey[100],
       body: StreamBuilder<DocumentSnapshot>(
@@ -289,7 +263,6 @@ class _CustomerDetailsPageState extends State<CustomerDetailsPage> {
 
               return Column(
                 children: [
-                  // 🟢 الهيدر (المجموع)
                   Container(
                     width: double.infinity,
                     padding:
@@ -329,9 +302,22 @@ class _CustomerDetailsPageState extends State<CustomerDetailsPage> {
                         final amount = (data['amount'] ?? 0.0).toDouble();
                         final tripId = trips[index].id;
 
-                        return Card(
-                          shape: RoundedRectangleBorder(
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 500),
+                          curve: Curves.easeInOut,
+                          margin: const EdgeInsets.symmetric(vertical: 5),
+                          decoration: BoxDecoration(
+                            color: isPaid
+                                ? Colors.green.shade100
+                                : Colors.white,
                             borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.2),
+                                blurRadius: 6,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
                           ),
                           child: ListTile(
                             leading: Icon(
@@ -345,10 +331,24 @@ class _CustomerDetailsPageState extends State<CustomerDetailsPage> {
                               'المبلغ: ${amount.toStringAsFixed(2)} د.أ\n${data['date'].toDate()}',
                               style: const TextStyle(fontSize: 13),
                             ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () =>
-                                  _deleteTrip(tripId, amount, isPaid),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (!isPaid)
+                                  IconButton(
+                                    icon: const Icon(Icons.check_circle,
+                                        color: Colors.green),
+                                    tooltip: 'تم الدفع',
+                                    onPressed: () =>
+                                        _markAsPaid(tripId, amount),
+                                  ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete,
+                                      color: Colors.red),
+                                  onPressed: () =>
+                                      _deleteTrip(tripId, amount, isPaid),
+                                ),
+                              ],
                             ),
                           ),
                         );
@@ -361,59 +361,18 @@ class _CustomerDetailsPageState extends State<CustomerDetailsPage> {
           );
         },
       ),
-      floatingActionButton: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          FloatingActionButton.extended(
-            heroTag: 'edit',
-            backgroundColor: Colors.blueAccent,
-            icon: const Icon(Icons.edit),
-            label: const Text('تعديل الزبون'),
-            onPressed: () async {
-              final uid = _auth.currentUser!.uid;
-              final doc = await _firestore
-                  .collection('users')
-                  .doc(uid)
-                  .collection('customers')
-                  .doc(widget.customerId)
-                  .get();
-              if (doc.exists) {
-                _editCustomer(doc.data() as Map<String, dynamic>);
-              }
-            },
-          ),
-          const SizedBox(height: 10),
-          FloatingActionButton.extended(
-            heroTag: 'oldDebt',
-            backgroundColor: Colors.orange,
-            icon: const Icon(Icons.attach_money),
-            label: const Text('إضافة دين قديم'),
-            onPressed: _addOldDebt,
-          ),
-          const SizedBox(height: 10),
-          FloatingActionButton.extended(
-            heroTag: 'trip',
-            backgroundColor: Colors.teal,
-            icon: const Icon(Icons.add),
-            label: const Text('إضافة رحلة'),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AddTripPage(customerId: widget.customerId),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 10),
-          FloatingActionButton.extended(
-            heroTag: 'delete',
-            backgroundColor: Colors.red,
-            icon: const Icon(Icons.delete_forever),
-            label: const Text('حذف الزبون'),
-            onPressed: _deleteCustomer,
-          ),
-        ],
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: Colors.orange,
+        icon: const Icon(Icons.add),
+        label: const Text('إضافة دين / رحلة'),
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => AddTripPage(customerId: widget.customerId),
+            ),
+          );
+        },
       ),
     );
   }

@@ -17,10 +17,7 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions have not been configured for web - '
-        'you can reconfigure this by running the FlutterFire CLI again.',
-      );
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -30,17 +27,17 @@ class DefaultFirebaseOptions {
       case TargetPlatform.macOS:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for macos - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+              'you can reconfigure this by running the FlutterFire CLI again.',
         );
       case TargetPlatform.windows:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+              'you can reconfigure this by running the FlutterFire CLI again.',
         );
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+              'you can reconfigure this by running the FlutterFire CLI again.',
         );
       default:
         throw UnsupportedError(
@@ -49,6 +46,7 @@ class DefaultFirebaseOptions {
     }
   }
 
+  // ✅ Android config
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyA7LwAJrumP0LpfyOK7Q4Q_CF2zSlrTJxU',
     appId: '1:723337166396:android:3748c93d1c8fafa3ae0d39',
@@ -57,12 +55,28 @@ class DefaultFirebaseOptions {
     storageBucket: 'flutter-issam2.firebasestorage.app',
   );
 
+  // ✅ iOS config
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyAj6zqtIB0b92BS7FE7goCblkEsyZLL_UU',
     appId: '1:723337166396:ios:ea28d05788fe8ed3ae0d39',
     messagingSenderId: '723337166396',
     projectId: 'flutter-issam2',
     storageBucket: 'flutter-issam2.firebasestorage.app',
+    androidClientId:
+    '723337166396-4bl3g974bgo833nopg2o33ljl97e572p.apps.googleusercontent.com',
+    iosClientId:
+    '723337166396-lvd14iqi19r0ql3ta6469cjbgog723aq.apps.googleusercontent.com',
     iosBundleId: 'com.example.firebasetest',
+  );
+
+  // ✅ Web config (القسم الجديد)
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: "AIzaSyDfrH9cLFW-Oe-QAshRU9eoGRXCFLLLVQE",
+    authDomain: "flutter-issam2.firebaseapp.com",
+    projectId: "flutter-issam2",
+    storageBucket: "flutter-issam2.firebasestorage.app",
+    messagingSenderId: "723337166396",
+    appId: "1:723337166396:web:7525dd97132d322aae0d39",
+    measurementId: "G-D59BV94FF5",
   );
 }

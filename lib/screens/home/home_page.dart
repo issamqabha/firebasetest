@@ -16,20 +16,23 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
+
   Map<String, dynamic>? _driverData;
 
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    _loadDriverData();
   }
 
-  Future<void> _loadUserData() async {
+  Future<void> _loadDriverData() async {
     final user = _auth.currentUser;
     if (user == null) return;
 
     final doc = await _firestore.collection('users').doc(user.uid).get();
-    if (doc.exists) setState(() => _driverData = doc.data());
+    if (doc.exists) {
+      setState(() => _driverData = doc.data());
+    }
   }
 
   Future<void> _signOut() async {
@@ -44,14 +47,12 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final user = _auth.currentUser;
-    if (user == null) {
+    final driverId = _auth.currentUser?.uid;
+    if (driverId == null) {
       return const Scaffold(
         body: Center(child: Text('جاري تحميل المستخدم...')),
       );
     }
-
-    final uid = user.uid;
 
     return Scaffold(
       appBar: AppBar(
@@ -61,7 +62,7 @@ class _HomePageState extends State<HomePage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadUserData,
+            onPressed: _loadDriverData,
           ),
         ],
       ),
@@ -79,10 +80,11 @@ class _HomePageState extends State<HomePage> {
               ),
               accountName: Text(
                 _driverData?['name'] ?? 'السائق',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style:
+                const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               accountEmail: Text(
-                _driverData?['email'] ?? user.email ?? '',
+                _driverData?['email'] ?? _auth.currentUser?.email ?? '',
               ),
               currentAccountPicture: const CircleAvatar(
                 backgroundColor: Colors.white,
@@ -92,10 +94,12 @@ class _HomePageState extends State<HomePage> {
             ListTile(
               leading: const Icon(Icons.person),
               title: const Text("الملف الشخصي"),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ProfileInfo()),
-              ),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProfileInfo()),
+                );
+              },
             ),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
@@ -106,10 +110,12 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
       backgroundColor: Colors.grey[100],
+
+      // ✅ عرض الزبائن + مجموع الديون
       body: StreamBuilder<QuerySnapshot>(
         stream: _firestore
             .collection('users')
-            .doc(uid)
+            .doc(driverId)
             .collection('customers')
             .orderBy('createdAt', descending: true)
             .snapshots(),
@@ -129,57 +135,101 @@ class _HomePageState extends State<HomePage> {
           }
 
           final customers = snapshot.data!.docs;
+          double totalDebtAll = 0;
+          for (var doc in customers) {
+            totalDebtAll += (doc['totalDebt'] ?? 0).toDouble();
+          }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: customers.length,
-            itemBuilder: (context, index) {
-              final data = customers[index].data() as Map<String, dynamic>;
-              final id = customers[index].id;
-
-              return Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
+          return Column(
+            children: [
+              // 💰 شريط المجموع الكلي
+              Container(
+                width: double.infinity,
+                padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+                decoration: const BoxDecoration(
+                  color: Colors.teal,
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(25),
+                    bottomRight: Radius.circular(25),
+                  ),
                 ),
-                elevation: 3,
-                child: ListTile(
-                  leading: const CircleAvatar(
-                    backgroundColor: Colors.teal,
-                    child: Icon(Icons.person, color: Colors.white),
-                  ),
-                  title: Text(
-                    data['name'] ?? 'بدون اسم',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                child: Column(
+                  children: [
+                    const Text(
+                      'إجمالي الديون لجميع الزبائن',
+                      style: TextStyle(color: Colors.white70, fontSize: 16),
                     ),
-                  ),
-                  subtitle: Text('الهاتف: ${data['phone'] ?? 'غير محدد'}'),
-                  trailing: Text(
-                    '${data['totalDebt'] ?? 0} د.أ',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red,
+                    const SizedBox(height: 6),
+                    Text(
+                      '${totalDebtAll.toStringAsFixed(2)} د.أ',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => CustomerDetailsPage(
-                          customerId: id,
-                          name: data['name'] ?? 'زبون',
+                  ],
+                ),
+              ),
+
+              // 🧾 قائمة الزبائن (نفس الشكل الأصلي)
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: customers.length,
+                  itemBuilder: (context, index) {
+                    final data = customers[index].data() as Map<String, dynamic>;
+                    final id = customers[index].id;
+
+                    return Card(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      elevation: 3,
+                      child: ListTile(
+                        leading: const CircleAvatar(
+                          backgroundColor: Colors.teal,
+                          child: Icon(Icons.person, color: Colors.white),
                         ),
+                        title: Text(
+                          data['name'] ?? 'بدون اسم',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+                        subtitle: Text('الهاتف: ${data['phone'] ?? 'غير محدد'}'),
+                        trailing: Text(
+                          '${data['totalDebt'] ?? 0} د.أ',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red,
+                          ),
+                        ),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => CustomerDetailsPage(
+                                customerId: id,
+                                name: data['name'] ?? 'زبون',
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     );
                   },
                 ),
-              );
-            },
+              ),
+            ],
           );
         },
       ),
+
+      // زر الإضافة
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           await Navigator.push(

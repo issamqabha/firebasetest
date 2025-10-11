@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -85,37 +86,34 @@ class _AuthPageState extends State<AuthPage> {
     }
   }
 
-  // ====== Google Sign-In ======
+  // ====== Google Sign-In (يدعم الويب والموبايل) ======
   Future<UserCredential?> signInWithGoogle() async {
     try {
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) return null;
+      if (kIsWeb) {
+        // 🟢 للويب
+        final GoogleAuthProvider authProvider = GoogleAuthProvider();
+        final userCredential =
+        await FirebaseAuth.instance.signInWithPopup(authProvider);
+        await _saveUserToFirestore(userCredential.user);
+        return userCredential;
+      } else {
+        // 📱 للموبايل
+        final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+        if (googleUser == null) return null;
 
-      final GoogleSignInAuthentication googleAuth =
-      await googleUser.authentication;
+        final GoogleSignInAuthentication googleAuth =
+        await googleUser.authentication;
 
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
 
-      final userCredential = await _auth.signInWithCredential(credential);
-      final user = userCredential.user;
-
-      if (user != null) {
-        final doc = await _firestore.collection("users").doc(user.uid).get();
-        if (!doc.exists) {
-          await _firestore.collection("users").doc(user.uid).set({
-            "email": user.email,
-            "name": user.displayName ?? "",
-            "age": "",
-            "gender": "",
-            "specialty": "",
-            "createdAt": DateTime.now(),
-          });
-        }
+        final userCredential =
+        await FirebaseAuth.instance.signInWithCredential(credential);
+        await _saveUserToFirestore(userCredential.user);
+        return userCredential;
       }
-      return userCredential;
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('فشل تسجيل الدخول عبر Google: $e')),
@@ -127,40 +125,52 @@ class _AuthPageState extends State<AuthPage> {
   // ====== Facebook Sign-In ======
   Future<UserCredential?> signInWithFacebook() async {
     try {
-      final LoginResult result = await FacebookAuth.instance.login();
-      if (result.status == LoginStatus.success) {
-        final credential =
-        FacebookAuthProvider.credential(result.accessToken!.token);
-
+      if (kIsWeb) {
+        // 🟢 للويب
+        final FacebookAuthProvider facebookProvider = FacebookAuthProvider();
         final userCredential =
-        await _auth.signInWithCredential(credential);
-
-        final user = userCredential.user;
-        if (user != null) {
-          final doc = await _firestore.collection("users").doc(user.uid).get();
-          if (!doc.exists) {
-            await _firestore.collection("users").doc(user.uid).set({
-              "email": user.email,
-              "name": user.displayName ?? "",
-              "age": "",
-              "gender": "",
-              "specialty": "",
-              "createdAt": DateTime.now(),
-            });
-          }
-        }
+        await FirebaseAuth.instance.signInWithPopup(facebookProvider);
+        await _saveUserToFirestore(userCredential.user);
         return userCredential;
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم إلغاء تسجيل الدخول عبر Facebook')),
-        );
-        return null;
+        // 📱 للموبايل
+        final LoginResult result = await FacebookAuth.instance.login();
+        if (result.status == LoginStatus.success) {
+          final credential =
+          FacebookAuthProvider.credential(result.accessToken!.token);
+
+          final userCredential =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+          await _saveUserToFirestore(userCredential.user);
+          return userCredential;
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم إلغاء تسجيل الدخول عبر Facebook')),
+          );
+          return null;
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('فشل تسجيل الدخول عبر Facebook: $e')),
       );
       return null;
+    }
+  }
+
+  // 🧠 دالة لحفظ المستخدم في Firestore بعد أول تسجيل
+  Future<void> _saveUserToFirestore(User? user) async {
+    if (user == null) return;
+    final doc = await _firestore.collection("users").doc(user.uid).get();
+    if (!doc.exists) {
+      await _firestore.collection("users").doc(user.uid).set({
+        "email": user.email,
+        "name": user.displayName ?? "",
+        "age": "",
+        "gender": "",
+        "specialty": "",
+        "createdAt": DateTime.now(),
+      });
     }
   }
 
@@ -253,8 +263,9 @@ class _AuthPageState extends State<AuthPage> {
                         labelText: 'البريد الإلكتروني',
                         prefixIcon: Icon(Icons.email),
                       ),
-                      validator: (v) =>
-                      v == null || v.isEmpty ? 'أدخل بريدك الإلكتروني' : null,
+                      validator: (v) => v == null || v.isEmpty
+                          ? 'أدخل بريدك الإلكتروني'
+                          : null,
                     ),
                     const SizedBox(height: 12),
 

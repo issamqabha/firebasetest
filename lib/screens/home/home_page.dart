@@ -1,6 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+
+import '../calc_history_screen.dart';
+import '../car_calculation_screen.dart';
 import '../customers/add_customer_page.dart';
 import '../customers/customer_details_page.dart';
 import '../profile/profile_info.dart';
@@ -66,6 +69,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
+
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -80,8 +84,7 @@ class _HomePageState extends State<HomePage> {
               ),
               accountName: Text(
                 _driverData?['name'] ?? 'السائق',
-                style:
-                const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               accountEmail: Text(
                 _driverData?['email'] ?? _auth.currentUser?.email ?? '',
@@ -95,12 +98,28 @@ class _HomePageState extends State<HomePage> {
               leading: const Icon(Icons.person),
               title: const Text("الملف الشخصي"),
               onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileInfo()));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.ev_station, color: Colors.teal),
+              title: const Text("حساب تكلفة السيارة"),
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const CarCalculationScreen()));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.history, color: Colors.teal),
+              title: const Text("سجل حسابات السيارة"),
+              onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const ProfileInfo()),
+                  MaterialPageRoute(builder: (_) => const CalcHistoryPage()),
                 );
               },
             ),
+
+
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
               title: const Text("تسجيل الخروج"),
@@ -109,9 +128,9 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
       ),
+
       backgroundColor: Colors.grey[100],
 
-      // ✅ عرض الزبائن + مجموع الديون
       body: StreamBuilder<QuerySnapshot>(
         stream: _firestore
             .collection('users')
@@ -142,11 +161,10 @@ class _HomePageState extends State<HomePage> {
 
           return Column(
             children: [
-              // 💰 شريط المجموع الكلي
+              // ✅ شريط المجموع + زر السيارة
               Container(
                 width: double.infinity,
-                padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
                 decoration: const BoxDecoration(
                   color: Colors.teal,
                   borderRadius: BorderRadius.only(
@@ -169,11 +187,42 @@ class _HomePageState extends State<HomePage> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                    const SizedBox(height: 15),
+
+                    // ✅ زر أيقونة السيارة داخل الهوم بيج
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => const CarCalculationScreen()));
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.directions_car, color: Colors.teal, size: 28),
+                            SizedBox(width: 10),
+                            Text(
+                              "حساب تكلفة السيارة",
+                              style: TextStyle(
+                                color: Colors.teal,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 17,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
 
-              // 🧾 قائمة الزبائن (نفس الشكل الأصلي)
+              // 🧾 قائمة الزبائن
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.all(16),
@@ -183,9 +232,7 @@ class _HomePageState extends State<HomePage> {
                     final id = customers[index].id;
 
                     return Card(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                       elevation: 3,
                       child: ListTile(
                         leading: const CircleAvatar(
@@ -194,17 +241,14 @@ class _HomePageState extends State<HomePage> {
                         ),
                         title: Text(
                           data['name'] ?? 'بدون اسم',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                          ),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                         ),
                         subtitle: Text('الهاتف: ${data['phone'] ?? 'غير محدد'}'),
                         trailing: Text(
                           '${data['totalDebt'] ?? 0} د.أ',
                           style: const TextStyle(
-                            fontSize: 16,
                             fontWeight: FontWeight.bold,
+                            fontSize: 16,
                             color: Colors.red,
                           ),
                         ),
@@ -229,7 +273,6 @@ class _HomePageState extends State<HomePage> {
         },
       ),
 
-      // زر الإضافة
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           await Navigator.push(
